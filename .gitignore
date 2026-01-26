@@ -6,12 +6,12 @@ dist
 coverage
 *.log
 
-# Anchor / Rust
+# Anchor / Rust / Solana
+**/Cargo.lock
 contracts/target
 contracts/.anchor
 contracts/programs/**/target
 contracts/programs/**/.anchor
-contracts/programs/**/Cargo.lock
 
 # OS
 Thumbs.db
