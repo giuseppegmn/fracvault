@@ -29,25 +29,28 @@ jobs:
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
-        with: 
+        with:
           node-version: 20
 
-      - name: Install JS deps (contracts)
-        working-directory: contracts
-        run: npm install
-
-
+      # ✅ Instale o Solana CLI e persista o PATH entre steps
       - name: Install Solana CLI
-        run: SOLANA_VERSION=v1.18.18
-              sh -c "$(curl -sSfL https://release.solana.com/${SOLANA_VERSION}/install)"
-                echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
-                  solana --version
+        shell: bash
+        run: |
+          SOLANA_VERSION="v1.18.18"
+          sh -c "$(curl -sSfL https://release.solana.com/${SOLANA_VERSION}/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+          solana --version
+          which solana
 
+      # ✅ Inicializa toolchain (inclui SBF)
       - name: Install Solana SBF tools
-        run: echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+        shell: bash
+        run: |
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
           solana-install init
+          solana --version
 
-
+      # ✅ Instala Anchor via AVM e valida
       - name: Install Anchor (avm)
         shell: bash
         run: |
@@ -55,24 +58,33 @@ jobs:
           avm install 0.31.1
           avm use 0.31.1
           anchor --version
+          which anchor
 
-      - name: Debug paths
-        run: |
-            which solana
-            solana --version
-            ls -la $HOME/.local/share/solana/install/active_release/bin || true
-
-
-      - name: Run Anchor tests
-        working-directory: contracts
-        run: anchor test
-
+      # ✅ Dependências JS do workspace de contratos (escolha UMA estratégia)
+      # Se você tem package-lock.json em contracts/, use npm ci. Se NÃO tem, use npm install.
       - name: Install JS deps (contracts)
+        shell: bash
         working-directory: contracts
-        run: npm ci
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
 
-      - name: Run Anchor tests
-        working-directory: contracts
+      # ✅ Debug que NÃO quebra o job (só imprime)
+      - name: Debug paths
         shell: bash
         run: |
-          anchor test
+          echo "PATH=$PATH"
+          which solana || true
+          solana --version || true
+          which anchor || true
+          anchor --version || true
+          ls -la "$HOME/.local/share/solana/install/active_release/bin" || true
+
+      # ✅ Rodar testes Anchor no diretório certo
+      - name: Run Anchor tests
+        shell: bash
+        working-directory: contracts
+        run: anchor test
