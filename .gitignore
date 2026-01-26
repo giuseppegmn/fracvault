@@ -1,0 +1,17 @@
+node_modules
+.DS_Store
+dist
+.env
+.env.*
+coverage
+*.log
+
+# Anchor / Rust
+contracts/target
+contracts/.anchor
+contracts/programs/**/target
+contracts/programs/**/.anchor
+contracts/programs/**/Cargo.lock
+
+# OS
+Thumbs.db

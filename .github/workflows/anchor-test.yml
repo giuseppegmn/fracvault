@@ -1,0 +1,62 @@
+name: Anchor Tests
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config build-essential libssl-dev ca-certificates curl git
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: swatinem/rust-cache@v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "contracts/package-lock.json"
+
+      - name: Install Solana CLI (from GitHub Releases)
+        shell: bash
+        run: |
+          SOLANA_VERSION="v1.18.26"
+          curl -L "https://github.com/solana-labs/solana/releases/download/${SOLANA_VERSION}/solana-release-x86_64-unknown-linux-gnu.tar.bz2" -o solana.tar.bz2
+          tar -xjf solana.tar.bz2
+          sudo find solana-release/bin -maxdepth 1 -type f -exec install -m 755 {} /usr/local/bin/ \;
+          solana --version
+
+      - name: Install Anchor (avm)
+        shell: bash
+        run: |
+          cargo install --git https://github.com/coral-xyz/anchor avm --locked
+          avm install 0.31.1
+          avm use 0.31.1
+          anchor --version
+
+      - name: Install JS deps (contracts)
+        working-directory: contracts
+        run: npm ci
+
+      - name: Run Anchor tests
+        working-directory: contracts
+        shell: bash
+        run: |
+          anchor test
