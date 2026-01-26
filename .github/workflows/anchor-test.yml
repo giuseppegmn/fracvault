@@ -37,14 +37,16 @@ jobs:
         run: npm install
 
 
-      - name: Install Solana CLI (from GitHub Releases)
-        shell: bash
-        run: |
-          SOLANA_VERSION="v1.18.26"
-          curl -L "https://github.com/solana-labs/solana/releases/download/${SOLANA_VERSION}/solana-release-x86_64-unknown-linux-gnu.tar.bz2" -o solana.tar.bz2
-          tar -xjf solana.tar.bz2
-          sudo find solana-release/bin -maxdepth 1 -type f -exec install -m 755 {} /usr/local/bin/ \;
-          solana --version
+      - name: Install Solana CLI
+        run: SOLANA_VERSION=v1.18.18
+              sh -c "$(curl -sSfL https://release.solana.com/${SOLANA_VERSION}/install)"
+                echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+                  solana --version
+
+      - name: Install Solana SBF tools
+        run: echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+          solana-install init
+
 
       - name: Install Anchor (avm)
         shell: bash
