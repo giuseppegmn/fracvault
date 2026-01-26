@@ -56,6 +56,13 @@ jobs:
           avm use 0.31.1
           anchor --version
 
+      - name: Debug paths
+        run: |
+            which solana
+            solana --version
+            ls -la $HOME/.local/share/solana/install/active_release/bin || true
+
+
       - name: Run Anchor tests
         working-directory: contracts
         run: anchor test
