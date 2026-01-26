@@ -13,15 +13,9 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      # --------------------------------------------------
-      # Checkout
-      # --------------------------------------------------
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # --------------------------------------------------
-      # System deps
-      # --------------------------------------------------
       - name: Install system dependencies
         run: |
           sudo apt-get update
@@ -29,21 +23,17 @@ jobs:
             pkg-config build-essential libssl-dev \
             ca-certificates curl git
 
-      # --------------------------------------------------
-      # Rust (host – não confundir com SBF)
-      # --------------------------------------------------
-      - name: Setup Rust
+      # ✅ Pin Rust < 1.78 pra NÃO gerar Cargo.lock v4
+      - name: Setup Rust (pinned)
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
+          toolchain: 1.77.2
           components: rustfmt, clippy
 
       - name: Cache Cargo
         uses: swatinem/rust-cache@v2
 
-      # --------------------------------------------------
-      # Solana CLI (via GitHub Releases – estável em CI)
-      # --------------------------------------------------
+      # Solana CLI via GitHub Releases (mais estável)
       - name: Install Solana CLI
         shell: bash
         run: |
@@ -56,17 +46,15 @@ jobs:
 
           mkdir -p "$HOME/solana"
           tar -xjf solana.tar.bz2 -C "$HOME/solana"
-
           echo "$HOME/solana/solana-release/bin" >> "$GITHUB_PATH"
 
       - name: Verify Solana
+        shell: bash
         run: |
           set -euxo pipefail
           solana --version
 
-      # --------------------------------------------------
-      # Anchor CLI — PINADO EM 0.31.1 (igual ao projeto)
-      # --------------------------------------------------
+      # ✅ Anchor CLI alinhado com anchor-lang 0.31.1
       - name: Install Anchor CLI (0.31.1)
         shell: bash
         run: |
@@ -76,9 +64,6 @@ jobs:
           avm use 0.31.1
           anchor --version
 
-      # --------------------------------------------------
-      # JS deps (contracts)
-      # --------------------------------------------------
       - name: Install JS deps (contracts)
         working-directory: contracts
         shell: bash
@@ -86,10 +71,8 @@ jobs:
           set -euxo pipefail
           npm ci
 
-      # --------------------------------------------------
-      # 🔥 PATCH 1 — remover Cargo.lock incompatível
-      # --------------------------------------------------
-      - name: Pre-clean Cargo.lock (Solana/Anchor CI)
+      # ✅ Força lockfile v3 com Cargo 1.77.2
+      - name: Normalize Cargo.lock (force v3)
         working-directory: contracts
         shell: bash
         run: |
@@ -97,9 +80,13 @@ jobs:
           rm -f Cargo.lock
           find programs -name Cargo.lock -type f -delete || true
 
-      # --------------------------------------------------
-      # Run Anchor tests
-      # --------------------------------------------------
+          # gera lockfile com o cargo PINADO (<1.78) => v3
+          cargo --version
+          cargo generate-lockfile
+
+          # prova a versão do lockfile (deve ser 3, não 4)
+          head -n 5 Cargo.lock || true
+
       - name: Run Anchor tests
         working-directory: contracts
         env:
