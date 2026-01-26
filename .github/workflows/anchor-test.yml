@@ -36,10 +36,6 @@ jobs:
         working-directory: contracts
         run: npm install
 
-      - name: Run Anchor tests
-        working-directory: contracts
-        run: anchor test
-
 
       - name: Install Solana CLI (from GitHub Releases)
         shell: bash
@@ -57,6 +53,10 @@ jobs:
           avm install 0.31.1
           avm use 0.31.1
           anchor --version
+
+      - name: Run Anchor tests
+        working-directory: contracts
+        run: anchor test
 
       - name: Install JS deps (contracts)
         working-directory: contracts
