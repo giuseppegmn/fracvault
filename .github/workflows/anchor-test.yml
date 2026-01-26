@@ -13,36 +13,69 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      # =========================
+      # Checkout
+      # =========================
       - name: Checkout
         uses: actions/checkout@v4
 
+      # =========================
+      # System dependencies
+      # =========================
       - name: Install system deps
+        shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config build-essential libssl-dev ca-certificates curl git
+          sudo apt-get install -y \
+            pkg-config \
+            build-essential \
+            libssl-dev \
+            ca-certificates \
+            curl \
+            git
 
+      # =========================
+      # Rust
+      # =========================
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo
         uses: swatinem/rust-cache@v2
 
+      # =========================
+      # Node.js
+      # =========================
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      # ✅ Instale o Solana CLI e persista o PATH entre steps
+      # =========================
+      # Solana CLI (robusto com retry)
+      # =========================
       - name: Install Solana CLI
         shell: bash
         run: |
+          set -e
           SOLANA_VERSION="v1.18.18"
-          sh -c "$(curl -sSfL https://release.solana.com/${SOLANA_VERSION}/install)"
+
+          curl --retry 5 \
+               --retry-delay 5 \
+               --retry-connrefused \
+               --proto '=https' \
+               --tlsv1.2 \
+               -sSfL "https://release.solana.com/${SOLANA_VERSION}/install" \
+            | sh
+
           echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
           solana --version
           which solana
 
-      # ✅ Inicializa toolchain (inclui SBF)
+      # =========================
+      # Solana SBF toolchain
+      # =========================
       - name: Install Solana SBF tools
         shell: bash
         run: |
@@ -50,7 +83,9 @@ jobs:
           solana-install init
           solana --version
 
-      # ✅ Instala Anchor via AVM e valida
+      # =========================
+      # Anchor (AVM)
+      # =========================
       - name: Install Anchor (avm)
         shell: bash
         run: |
@@ -60,8 +95,9 @@ jobs:
           anchor --version
           which anchor
 
-      # ✅ Dependências JS do workspace de contratos (escolha UMA estratégia)
-      # Se você tem package-lock.json em contracts/, use npm ci. Se NÃO tem, use npm install.
+      # =========================
+      # JS deps (contracts workspace)
+      # =========================
       - name: Install JS deps (contracts)
         shell: bash
         working-directory: contracts
@@ -72,7 +108,9 @@ jobs:
             npm install
           fi
 
-      # ✅ Debug que NÃO quebra o job (só imprime)
+      # =========================
+      # Debug (não quebra o job)
+      # =========================
       - name: Debug paths
         shell: bash
         run: |
@@ -83,7 +121,9 @@ jobs:
           anchor --version || true
           ls -la "$HOME/.local/share/solana/install/active_release/bin" || true
 
-      # ✅ Rodar testes Anchor no diretório certo
+      # =========================
+      # Anchor tests
+      # =========================
       - name: Run Anchor tests
         shell: bash
         working-directory: contracts
