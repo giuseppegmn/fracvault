@@ -23,17 +23,27 @@ jobs:
             pkg-config build-essential libssl-dev \
             ca-certificates curl git
 
-      # ✅ Pin Rust < 1.78 pra NÃO gerar Cargo.lock v4
-      - name: Setup Rust (pinned)
+      # --------------------------------------------------
+      # Rust toolchains (2 versões)
+      # --------------------------------------------------
+      - name: Setup Rust (stable + 1.77.2)
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.77.2
+          toolchain: stable
           components: rustfmt, clippy
+
+      - name: Install Rust 1.77.2 too
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rustup toolchain install 1.77.2
 
       - name: Cache Cargo
         uses: swatinem/rust-cache@v2
 
-      # Solana CLI via GitHub Releases (mais estável)
+      # --------------------------------------------------
+      # Solana CLI (GitHub Releases)
+      # --------------------------------------------------
       - name: Install Solana CLI
         shell: bash
         run: |
@@ -54,7 +64,9 @@ jobs:
           set -euxo pipefail
           solana --version
 
-      # ✅ Anchor CLI alinhado com anchor-lang 0.31.1
+      # --------------------------------------------------
+      # Anchor CLI via AVM (compila com Rust stable moderno)
+      # --------------------------------------------------
       - name: Install Anchor CLI (0.31.1)
         shell: bash
         run: |
@@ -64,6 +76,9 @@ jobs:
           avm use 0.31.1
           anchor --version
 
+      # --------------------------------------------------
+      # JS deps
+      # --------------------------------------------------
       - name: Install JS deps (contracts)
         working-directory: contracts
         shell: bash
@@ -71,7 +86,9 @@ jobs:
           set -euxo pipefail
           npm ci
 
-      # ✅ Força lockfile v3 com Cargo 1.77.2
+      # --------------------------------------------------
+      # Força lockfile v3 usando Cargo do Rust 1.77.2
+      # --------------------------------------------------
       - name: Normalize Cargo.lock (force v3)
         working-directory: contracts
         shell: bash
@@ -80,13 +97,14 @@ jobs:
           rm -f Cargo.lock
           find programs -name Cargo.lock -type f -delete || true
 
-          # gera lockfile com o cargo PINADO (<1.78) => v3
-          cargo --version
-          cargo generate-lockfile
+          rustup run 1.77.2 cargo --version
+          rustup run 1.77.2 cargo generate-lockfile
 
-          # prova a versão do lockfile (deve ser 3, não 4)
-          head -n 5 Cargo.lock || true
+          head -n 8 Cargo.lock || true
 
+      # --------------------------------------------------
+      # Run Anchor tests
+      # --------------------------------------------------
       - name: Run Anchor tests
         working-directory: contracts
         env:
