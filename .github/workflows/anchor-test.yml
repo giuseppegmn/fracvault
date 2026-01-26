@@ -33,6 +33,13 @@ jobs:
           node-version: 20
           cache: 'false'
 
+      - name: Install JS deps (contracts)
+        working-directory: contracts
+        run: npm install
+
+      - name: Run Anchor tests
+        working-directory: contracts
+        run: anchor test
 
 
       - name: Install Solana CLI (from GitHub Releases)
