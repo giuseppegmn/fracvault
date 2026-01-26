@@ -42,13 +42,29 @@ jobs:
       # Solana CLI
       # -------------------------
       - name: Install Solana CLI
+        shell: bash
         run: |
+          set -euxo pipefail
           SOLANA_VERSION="v1.18.26"
-          curl -sSfL https://release.solana.com/${SOLANA_VERSION}/install | sh
-          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+
+          sh -c "$(curl -sSfL https://release.solana.com/${SOLANA_VERSION}/install)"
+
+          SOLANA_BIN="$HOME/.local/share/solana/install/active_release/bin"
+
+          ls -la "$SOLANA_BIN"
+          test -x "$SOLANA_BIN/solana"
+
+         
+          echo "$SOLANA_BIN" >> "$GITHUB_PATH"
+          echo "SOLANA_BIN=$SOLANA_BIN" >> "$GITHUB_ENV"
 
       - name: Verify Solana
-        run: solana --version
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo "PATH=$PATH"
+          which solana
+          solana --version
 
       # -------------------------
       # Anchor via AVM (forma correta)
