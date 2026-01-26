@@ -13,101 +13,69 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Checkout
+      - name: Checkout repo
         uses: actions/checkout@v4
 
+      # -------------------------
+      # System dependencies
+      # -------------------------
       - name: Install system deps
-        shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            pkg-config build-essential libssl-dev ca-certificates curl git
+            pkg-config build-essential libssl-dev \
+            ca-certificates curl git
 
+      # -------------------------
+      # Rust (compatível com Cargo.lock v4)
+      # -------------------------
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
 
-      - name: Cache cargo
+      - name: Cache Cargo
         uses: swatinem/rust-cache@v2
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      # ✅ Solana via GitHub Releases (sem release.solana.com)
-      - name: Install Solana CLI (GitHub Releases)
-        shell: bash
+      # -------------------------
+      # Solana CLI
+      # -------------------------
+      - name: Install Solana CLI
         run: |
-          set -euo pipefail
-          SOLANA_VERSION="v1.18.18"
-          TMPDIR="$(mktemp -d)"
-          ASSET="solana-release-x86_64-unknown-linux-gnu.tar.bz2"
-          URL="https://github.com/solana-labs/solana/releases/download/${SOLANA_VERSION}/${ASSET}"
+          SOLANA_VERSION="v1.18.26"
+          curl -sSfL https://release.solana.com/${SOLANA_VERSION}/install | sh
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
 
-          echo "Downloading Solana ${SOLANA_VERSION} from GitHub Releases..."
-          curl --http1.1 \
-               --retry 5 \
-               --retry-delay 5 \
-               --retry-connrefused \
-               -sSfL "$URL" -o "$TMPDIR/$ASSET"
+      - name: Verify Solana
+        run: solana --version
 
-          mkdir -p "$HOME/solana"
-          tar -xjf "$TMPDIR/$ASSET" -C "$HOME/solana" --strip-components=1
-
-          # PATH imediato (este step)
-          export PATH="$HOME/solana/bin:$PATH"
-          # PATH persistente (próximos steps)
-          echo "$HOME/solana/bin" >> "$GITHUB_PATH"
-
-          which solana
-          solana --version
-
-      # ⚠️ SBF toolchain: em alguns setups, isso já vem ok; em outros, precisa init.
-      - name: Install Solana SBF tools
-        shell: bash
-        run: |
-          set -euo pipefail
-          export PATH="$HOME/solana/bin:$PATH"
-          which solana
-          solana --version
-
-          # Se este comando não existir na distro do pacote, ele falhará.
-          # Por isso o "|| true" aqui: não vamos matar o job por causa do init.
-          solana-install init || true
-
-      - name: Install Anchor (avm)
-        shell: bash
+      # -------------------------
+      # Anchor via AVM (forma correta)
+      # -------------------------
+      - name: Install Anchor CLI
         run: |
           cargo install --git https://github.com/coral-xyz/anchor avm --locked
-          avm install 0.31.1
-          avm use 0.31.1
+          avm install latest
+          avm use latest
           anchor --version
-          which anchor
 
+      # -------------------------
+      # JS deps (se existir /contracts)
+      # -------------------------
       - name: Install JS deps (contracts)
-        shell: bash
         working-directory: contracts
         run: |
-          if [ -f package-lock.json ]; then
+          if [ -f package.json ]; then
             npm ci
-          else
-            npm install
           fi
 
-      - name: Debug paths
-        shell: bash
-        run: |
-          export PATH="$HOME/solana/bin:$PATH"
-          echo "PATH=$PATH"
-          which solana || true
-          solana --version || true
-          which anchor || true
-          anchor --version || true
-          ls -la "$HOME/solana/bin" || true
-
+      # -------------------------
+      # Run Anchor Tests
+      # -------------------------
       - name: Run Anchor tests
-        shell: bash
         working-directory: contracts
+        env:
+          RUST_BACKTRACE: full
         run: |
-          export PATH="$HOME/solana/bin:$PATH"
           anchor test
