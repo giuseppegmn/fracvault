@@ -17,33 +17,22 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install system dependencies
+        shell: bash
         run: |
+          set -euxo pipefail
           sudo apt-get update
           sudo apt-get install -y \
             pkg-config build-essential libssl-dev \
             ca-certificates curl git
 
-      # --------------------------------------------------
-      # Rust toolchains (2 versões)
-      # --------------------------------------------------
-      - name: Setup Rust (stable + 1.77.2)
+      # Rust (host toolchain for AVM + Anchor CLI)
+      - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-          components: rustfmt, clippy
-
-      - name: Install Rust 1.77.2 too
-        shell: bash
-        run: |
-          set -euxo pipefail
-          rustup toolchain install 1.77.2
 
       - name: Cache Cargo
         uses: swatinem/rust-cache@v2
 
-      # --------------------------------------------------
-      # Solana CLI (GitHub Releases)
-      # --------------------------------------------------
+      # Solana CLI (download from GitHub Releases)
       - name: Install Solana CLI
         shell: bash
         run: |
@@ -64,9 +53,7 @@ jobs:
           set -euxo pipefail
           solana --version
 
-      # --------------------------------------------------
-      # Anchor CLI via AVM (compila com Rust stable moderno)
-      # --------------------------------------------------
+      # Anchor CLI pinned to 0.31.1 (matches your anchor-lang)
       - name: Install Anchor CLI (0.31.1)
         shell: bash
         run: |
@@ -76,19 +63,23 @@ jobs:
           avm use 0.31.1
           anchor --version
 
-      # --------------------------------------------------
-      # JS deps
-      # --------------------------------------------------
+      # JS deps for Anchor project
       - name: Install JS deps (contracts)
         working-directory: contracts
         shell: bash
         run: |
           set -euxo pipefail
           npm ci
-          
-      # --------------------------------------------------
-      # Run Anchor tests
-      # --------------------------------------------------
+
+      # 🔥 Kill Cargo.lock v4 before Anchor build uses an older Cargo internally
+      - name: Remove Cargo.lock before Anchor tests
+        working-directory: contracts
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -f Cargo.lock
+          find programs -name Cargo.lock -type f -delete || true
+
       - name: Run Anchor tests
         working-directory: contracts
         env:
