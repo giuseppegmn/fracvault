@@ -67,64 +67,38 @@ jobs:
           set -euxo pipefail
           npm ci
 
-      - name: Remove Cargo.lock before Anchor tests
+      # ✅ Tudo no mesmo step: apaga lockfiles + roda anchor test
+      - name: Anchor test (delete Cargo.lock immediately before)
         working-directory: contracts
+        env:
+          RUST_BACKTRACE: full
+          CARGO_NET_GIT_FETCH_WITH_CLI: "true"
         shell: bash
         run: |
           set -euxo pipefail
+
           echo "PWD=$(pwd)"
           echo "Before delete:"
           ls -la
 
-          if [ -f Cargo.lock ]; then
-            echo "Cargo.lock exists BEFORE delete"
-            head -n 5 Cargo.lock || true
-          else
-            echo "No Cargo.lock before delete"
-          fi
-
+          # apaga lockfiles do workspace/programs
           rm -f Cargo.lock
           find programs -name Cargo.lock -type f -delete || true
 
           echo "After delete:"
           ls -la
-
           if [ -f Cargo.lock ]; then
-            echo "Cargo.lock STILL EXISTS after delete"
+            echo "Cargo.lock still exists after delete (unexpected)"
             exit 1
-          else
-            echo "Cargo.lock successfully removed"
           fi
 
-      # 👇 Diagnóstico sem impedir o teste de rodar
-      - name: Guard (diagnostic): report if Cargo.lock exists
-        continue-on-error: true
-        working-directory: contracts
-        shell: bash
-        run: |
-          set -euxo pipefail
-          if [ -f Cargo.lock ]; then
-            echo "Cargo.lock reappeared BEFORE anchor test!"
-            head -n 10 Cargo.lock || true
-            exit 1
-          fi
-          if find . -maxdepth 6 -name Cargo.lock -type f | grep -q .; then
-            echo "Some Cargo.lock exists under contracts/ before anchor test:"
-            find . -maxdepth 6 -name Cargo.lock -type f -print
-            exit 1
-          fi
-          echo "OK: no Cargo.lock found under contracts/"
-
-      - name: Run Anchor tests
-        working-directory: contracts
-        env:
-          RUST_BACKTRACE: full
-          # melhora estabilidade quando existir dependência git
-          CARGO_NET_GIT_FETCH_WITH_CLI: "true"
-        shell: bash
-        run: |
-          set -euxo pipefail
-          echo "PWD at anchor test=$(pwd)"
-          # print extra pra provar se o lockfile renasce DURANTE o anchor
-          ls -la
+          echo "Running anchor test..."
           anchor test
+
+          echo "After anchor test (check if Cargo.lock reappeared):"
+          if [ -f Cargo.lock ]; then
+            echo "Cargo.lock was recreated during anchor test:"
+            head -n 15 Cargo.lock || true
+          else
+            echo "No Cargo.lock created during anchor test."
+          fi
