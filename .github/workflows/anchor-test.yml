@@ -27,10 +27,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
+          # ❌ Removido cache: npm (exige lockfile no root)
 
-      # ✅ AQUI ESTÁ O FIX DO SEU ERRO:
-      # Pinamos um Rust/Cargo moderno (Cargo lockfile v4 é suportado)
+      # ✅ FIX do Cargo.lock v4: pin Rust moderno
       - name: Setup Rust (pinned)
         uses: dtolnay/rust-toolchain@v1
         with:
@@ -54,31 +53,34 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          # AVM (Anchor Version Manager)
           cargo install --git https://github.com/coral-xyz/anchor avm --locked
           avm --version
-
-          # Anchor CLI (pode ajustar a versão abaixo pra bater com seu projeto)
           ANCHOR_VERSION="0.30.1"
           avm install "${ANCHOR_VERSION}"
           avm use "${ANCHOR_VERSION}"
           anchor --version
 
-      - name: Install JS deps (root)
-        run: |
-          set -euxo pipefail
-          npm ci
-
-      - name: Delete Cargo.lock in contracts/programs (defensive)
+      - name: Show repo files (debug)
         shell: bash
         run: |
           set -euxo pipefail
-          echo "Before delete:"
+          pwd
           ls -la
-          rm -f Cargo.lock || true
+          echo "contracts:"
+          ls -la contracts || true
+
+      - name: Install JS deps (root)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          npm install --no-audit --no-fund
+
+      - name: Delete Cargo.lock in contracts (defensive)
+        shell: bash
+        run: |
+          set -euxo pipefail
           find contracts -name Cargo.lock -type f -delete || true
-          echo "After delete:"
-          find contracts -name Cargo.lock -type f -maxdepth 4 -print || true
+          find contracts -name Cargo.lock -type f -print || true
 
       - name: Run anchor test
         working-directory: contracts
