@@ -70,15 +70,41 @@ jobs:
         run: |
           set -euxo pipefail
           npm ci
-
-      # 🔥 Kill Cargo.lock v4 before Anchor build uses an older Cargo internally
       - name: Remove Cargo.lock before Anchor tests
         working-directory: contracts
         shell: bash
         run: |
           set -euxo pipefail
+
+          echo "PWD=$(pwd)"
+          echo "Before delete:"
+          ls -la
+          test -f Cargo.lock && (echo "Cargo.lock exists BEFORE delete"; head -n 5 Cargo.lock) || echo "No Cargo.lock before delete"
+
           rm -f Cargo.lock
           find programs -name Cargo.lock -type f -delete || true
+
+          echo "After delete:"
+          ls -la
+          test -f Cargo.lock && (echo "Cargo.lock STILL EXISTS after delete"; exit 1) || echo "Cargo.lock successfully removed"
+
+      - name: Guard: fail if Cargo.lock reappears
+        working-directory: contracts
+        shell: bash
+        run: |
+          set -euxo pipefail
+          # Procura qualquer lockfile reaparecendo
+          if [ -f Cargo.lock ]; then
+            echo "Cargo.lock reappeared BEFORE anchor test!"
+            head -n 10 Cargo.lock || true
+            exit 1
+          fi
+          if find . -maxdepth 4 -name Cargo.lock -type f | grep -q .; then
+            echo "Some Cargo.lock exists under contracts/ before anchor test:"
+            find . -maxdepth 4 -name Cargo.lock -type f -print
+            exit 1
+          fi
+          echo "OK: no Cargo.lock found under contracts/"
 
       - name: Run Anchor tests
         working-directory: contracts
@@ -87,4 +113,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+          echo "PWD at anchor test=$(pwd)"
           anchor test
+
+     
