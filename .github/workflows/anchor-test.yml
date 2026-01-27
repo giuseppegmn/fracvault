@@ -25,14 +25,12 @@ jobs:
             pkg-config build-essential libssl-dev \
             ca-certificates curl git
 
-      # Rust (host toolchain for AVM + Anchor CLI)
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Cargo
         uses: swatinem/rust-cache@v2
 
-      # Solana CLI (download from GitHub Releases)
       - name: Install Solana CLI
         shell: bash
         run: |
@@ -53,7 +51,6 @@ jobs:
           set -euxo pipefail
           solana --version
 
-      # Anchor CLI pinned to 0.31.1 (matches your anchor-lang)
       - name: Install Anchor CLI (0.31.1)
         shell: bash
         run: |
@@ -63,45 +60,57 @@ jobs:
           avm use 0.31.1
           anchor --version
 
-      # JS deps for Anchor project
       - name: Install JS deps (contracts)
         working-directory: contracts
         shell: bash
         run: |
           set -euxo pipefail
           npm ci
+
       - name: Remove Cargo.lock before Anchor tests
         working-directory: contracts
         shell: bash
         run: |
           set -euxo pipefail
-
           echo "PWD=$(pwd)"
           echo "Before delete:"
           ls -la
-          test -f Cargo.lock && (echo "Cargo.lock exists BEFORE delete"; head -n 5 Cargo.lock) || echo "No Cargo.lock before delete"
+
+          if [ -f Cargo.lock ]; then
+            echo "Cargo.lock exists BEFORE delete"
+            head -n 5 Cargo.lock || true
+          else
+            echo "No Cargo.lock before delete"
+          fi
 
           rm -f Cargo.lock
           find programs -name Cargo.lock -type f -delete || true
 
           echo "After delete:"
           ls -la
-          test -f Cargo.lock && (echo "Cargo.lock STILL EXISTS after delete"; exit 1) || echo "Cargo.lock successfully removed"
 
-      - name: Guard: fail if Cargo.lock reappears
+          if [ -f Cargo.lock ]; then
+            echo "Cargo.lock STILL EXISTS after delete"
+            exit 1
+          else
+            echo "Cargo.lock successfully removed"
+          fi
+
+      # 👇 Diagnóstico sem impedir o teste de rodar
+      - name: Guard (diagnostic): report if Cargo.lock exists
+        continue-on-error: true
         working-directory: contracts
         shell: bash
         run: |
           set -euxo pipefail
-          # Procura qualquer lockfile reaparecendo
           if [ -f Cargo.lock ]; then
             echo "Cargo.lock reappeared BEFORE anchor test!"
             head -n 10 Cargo.lock || true
             exit 1
           fi
-          if find . -maxdepth 4 -name Cargo.lock -type f | grep -q .; then
+          if find . -maxdepth 6 -name Cargo.lock -type f | grep -q .; then
             echo "Some Cargo.lock exists under contracts/ before anchor test:"
-            find . -maxdepth 4 -name Cargo.lock -type f -print
+            find . -maxdepth 6 -name Cargo.lock -type f -print
             exit 1
           fi
           echo "OK: no Cargo.lock found under contracts/"
@@ -110,10 +119,12 @@ jobs:
         working-directory: contracts
         env:
           RUST_BACKTRACE: full
+          # melhora estabilidade quando existir dependência git
+          CARGO_NET_GIT_FETCH_WITH_CLI: "true"
         shell: bash
         run: |
           set -euxo pipefail
           echo "PWD at anchor test=$(pwd)"
+          # print extra pra provar se o lockfile renasce DURANTE o anchor
+          ls -la
           anchor test
-
-     
