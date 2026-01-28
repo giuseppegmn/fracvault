@@ -29,67 +29,32 @@ jobs:
         with:
           node-version: "20"
 
-      # Rust suficiente pra compilar o AVM
-      - name: Setup Rust (pinned)
-        uses: dtolnay/rust-toolchain@v1
-        with:
-          toolchain: "1.82.0"
-          components: rustfmt, clippy
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo
         uses: swatinem/rust-cache@v2
 
-      - name: Install Solana CLI (from GitHub Releases)
+      - name: Install Solana CLI
         shell: bash
         run: |
           set -euxo pipefail
           SOLANA_VERSION="v1.18.26"
           curl -L "https://github.com/solana-labs/solana/releases/download/${SOLANA_VERSION}/solana-release-x86_64-unknown-linux-gnu.tar.bz2" -o solana.tar.bz2
           tar -xjf solana.tar.bz2
-
           echo "$PWD/solana-release/bin" >> "$GITHUB_PATH"
           export PATH="$PWD/solana-release/bin:$PATH"
-
           solana --version
 
-      - name: Install Anchor (AVM + anchor-cli)
+      - name: Install Anchor CLI (binary release)
         shell: bash
         run: |
           set -euxo pipefail
-
-          rustc --version
-          cargo --version
-
-          # Instala AVM
-          cargo install --git https://github.com/coral-xyz/anchor avm --locked
-          avm --version
-
-          # ✅ DEFENSIVO: se existir anchor antigo (runner/cache), remove antes do avm install
-          if command -v anchor >/dev/null 2>&1; then
-            echo "Found existing anchor at: $(command -v anchor)"
-          fi
-          rm -f "$HOME/.cargo/bin/anchor" || true
-
-          # (opcional) também remove shims antigos do AVM, se existirem
-          rm -f "$HOME/.local/share/avm/bin/anchor" || true
-          rm -f "$HOME/.avm/bin/anchor" || true
-
           ANCHOR_VERSION="0.30.1"
-          avm install "${ANCHOR_VERSION}"
-          avm use "${ANCHOR_VERSION}"
-
-          # Garante que o anchor ativo é o do AVM
+          curl -L "https://github.com/coral-xyz/anchor/releases/download/v${ANCHOR_VERSION}/anchor-${ANCHOR_VERSION}-x86_64-unknown-linux-gnu.tar.gz" -o anchor.tar.gz
+          tar -xzf anchor.tar.gz
+          sudo mv anchor /usr/local/bin/
           anchor --version
-          command -v anchor
-
-      - name: Show repo files (debug)
-        shell: bash
-        run: |
-          set -euxo pipefail
-          pwd
-          ls -la
-          echo "contracts:"
-          ls -la contracts || true
 
       - name: Install JS deps (root)
         shell: bash
@@ -102,7 +67,6 @@ jobs:
         run: |
           set -euxo pipefail
           find contracts -name Cargo.lock -type f -delete || true
-          find contracts -name Cargo.lock -type f -print || true
 
       - name: Run anchor test
         working-directory: contracts
