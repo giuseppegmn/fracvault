@@ -30,14 +30,14 @@ jobs:
         with:
           node-version: "20"
 
-      # Rust REAL usado pelos builds (>= 1.76)
-      - name: Setup Rust
+      # ✅ Fix: Rust >= 1.79 (vou travar em 1.82 pra evitar novo MSRV)
+      - name: Setup Rust (pinned)
         uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: "1.77.2"
+          toolchain: "1.82.0"
           components: rustfmt, clippy
 
-      # Solana compatível com Anchor 0.31.x
+      # Solana CLI (mantém 1.18.x; validator local)
       - name: Install Solana CLI
         shell: bash
         run: |
@@ -51,7 +51,7 @@ jobs:
           export PATH="$PWD/solana-release/bin:$PATH"
           solana --version
 
-      # Anchor CLI 0.31.1 (MESMA versão do projeto)
+      # Anchor CLI 0.31.1 isolado (sem AVM, sem conflito de binário)
       - name: Install Anchor CLI (source, isolated)
         shell: bash
         run: |
@@ -60,6 +60,7 @@ jobs:
           export CARGO_HOME="$RUNNER_TEMP/cargo-home"
           export CARGO_TARGET_DIR="$RUNNER_TEMP/cargo-target"
           export ANCHOR_ROOT="$RUNNER_TEMP/anchor-root"
+          mkdir -p "$CARGO_HOME" "$CARGO_TARGET_DIR" "$ANCHOR_ROOT"
 
           cargo install \
             --git https://github.com/coral-xyz/anchor \
@@ -80,12 +81,7 @@ jobs:
           set -euxo pipefail
           npm install --no-audit --no-fund
 
-      - name: Remove Cargo.lock in contracts (defensive)
-        shell: bash
-        run: |
-          set -euxo pipefail
-          find contracts -name Cargo.lock -type f -delete || true
-
+      # ✅ NÃO deleta Cargo.lock aqui — isso costuma criar “dependência surpresa”
       - name: Run anchor tests
         working-directory: contracts
         shell: bash
