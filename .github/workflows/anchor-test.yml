@@ -23,39 +23,83 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential pkg-config libssl-dev libudev-dev \
-            ca-certificates curl git python3 make g++
+            ca-certificates curl git python3 make g++ \
+            jq
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      # ✅ Fix: Rust >= 1.79 (vou travar em 1.82 pra evitar novo MSRV)
+      # Rust alto o suficiente pra MSRVs recentes (solana-program 2.x, toml_parser, etc.)
       - name: Setup Rust (pinned)
         uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: "1.82.0"
           components: rustfmt, clippy
 
-      # Solana CLI (mantém 1.18.x; validator local)
-      - name: Install Solana CLI
+      - name: Detect versions from contracts/Cargo.lock
+        id: vers
         shell: bash
         run: |
           set -euxo pipefail
-          SOLANA_VERSION="v1.18.22"
-          curl -fL \
-            "https://github.com/solana-labs/solana/releases/download/${SOLANA_VERSION}/solana-release-x86_64-unknown-linux-gnu.tar.bz2" \
-            -o solana.tar.bz2
-          tar -xjf solana.tar.bz2
-          echo "$PWD/solana-release/bin" >> "$GITHUB_PATH"
-          export PATH="$PWD/solana-release/bin:$PATH"
-          solana --version
 
-      # Anchor CLI 0.31.1 isolado (sem AVM, sem conflito de binário)
-      - name: Install Anchor CLI (source, isolated)
+          test -f contracts/Cargo.lock
+
+          # Extrai versão do anchor-lang
+          ANCHOR_LANG_VERSION="$(
+            awk '
+              $0 ~ /^name = "anchor-lang"$/ {found=1}
+              found && $0 ~ /^version = "/ {gsub(/version = "|"/, "", $0); print $0; exit}
+            ' contracts/Cargo.lock
+          )"
+
+          # Extrai versão do solana-program
+          SOLANA_PROGRAM_VERSION="$(
+            awk '
+              $0 ~ /^name = "solana-program"$/ {found=1}
+              found && $0 ~ /^version = "/ {gsub(/version = "|"/, "", $0); print $0; exit}
+            ' contracts/Cargo.lock
+          )"
+
+          echo "anchor_lang_version=$ANCHOR_LANG_VERSION" >> "$GITHUB_OUTPUT"
+          echo "solana_program_version=$SOLANA_PROGRAM_VERSION" >> "$GITHUB_OUTPUT"
+
+          echo "Detected anchor-lang: $ANCHOR_LANG_VERSION"
+          echo "Detected solana-program: $SOLANA_PROGRAM_VERSION"
+
+      - name: Install Solana CLI (match solana-program if possible)
         shell: bash
         run: |
           set -euxo pipefail
+
+          SOLANA_TARGET="v${{ steps.vers.outputs.solana_program_version }}"
+          FALLBACK="v1.18.26"
+
+          download_and_install() {
+            local ver="$1"
+            echo "Trying Solana CLI $ver"
+            curl -fL "https://github.com/solana-labs/solana/releases/download/${ver}/solana-release-x86_64-unknown-linux-gnu.tar.bz2" -o solana.tar.bz2
+            tar -xjf solana.tar.bz2
+            echo "$PWD/solana-release/bin" >> "$GITHUB_PATH"
+            # Não coloca solana/bin na frente do PATH pra não “sequestrar” rustc
+            export PATH="$PATH:$PWD/solana-release/bin"
+            solana --version
+          }
+
+          if ! download_and_install "$SOLANA_TARGET"; then
+            echo "Solana $SOLANA_TARGET not available as a release tarball; falling back to $FALLBACK"
+            rm -rf solana-release solana.tar.bz2 || true
+            download_and_install "$FALLBACK"
+          fi
+
+      - name: Install Anchor CLI (match anchor-lang, isolated)
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          ANCHOR_VER="${{ steps.vers.outputs.anchor_lang_version }}"
+          test -n "$ANCHOR_VER"
 
           export CARGO_HOME="$RUNNER_TEMP/cargo-home"
           export CARGO_TARGET_DIR="$RUNNER_TEMP/cargo-target"
@@ -64,13 +108,13 @@ jobs:
 
           cargo install \
             --git https://github.com/coral-xyz/anchor \
-            --tag v0.31.1 \
+            --tag "v${ANCHOR_VER}" \
             anchor-cli \
             --locked \
             --root "$ANCHOR_ROOT"
 
           echo "$ANCHOR_ROOT/bin" >> "$GITHUB_PATH"
-          export PATH="$ANCHOR_ROOT/bin:$PATH"
+          export PATH="$PATH:$ANCHOR_ROOT/bin"
 
           anchor --version
           command -v anchor
@@ -81,7 +125,7 @@ jobs:
           set -euxo pipefail
           npm install --no-audit --no-fund
 
-      # ✅ NÃO deleta Cargo.lock aqui — isso costuma criar “dependência surpresa”
+      # ⚠️ Para de deletar Cargo.lock: isso é o que cria “dependência surpresa”
       - name: Run anchor tests
         working-directory: contracts
         shell: bash
