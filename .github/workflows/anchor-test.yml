@@ -22,48 +22,76 @@ jobs:
           set -euxo pipefail
           sudo apt-get update
           sudo apt-get install -y \
-            pkg-config build-essential libssl-dev ca-certificates curl git file
+            pkg-config build-essential libssl-dev ca-certificates curl git \
+            python3 make g++ \
+            libudev-dev
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      - name: Setup Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
+      # Rust suficiente pra compilar toolchains modernas (evita MSRV quebrando)
+      - name: Setup Rust (pinned)
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: "1.82.0"
+          components: rustfmt, clippy
 
-      - name: Cache cargo
-        uses: swatinem/rust-cache@v2
-
-      - name: Install Solana CLI
+      - name: Install Solana CLI (GitHub Releases)
         shell: bash
         run: |
           set -euxo pipefail
           SOLANA_VERSION="v1.18.26"
           curl -fL "https://github.com/solana-labs/solana/releases/download/${SOLANA_VERSION}/solana-release-x86_64-unknown-linux-gnu.tar.bz2" -o solana.tar.bz2
           tar -xjf solana.tar.bz2
+
           echo "$PWD/solana-release/bin" >> "$GITHUB_PATH"
           export PATH="$PWD/solana-release/bin:$PATH"
+
           solana --version
 
-      - name: Install Anchor CLI (binary release)
+      # ✅ Anchor CLI via source (tag), instalado em ROOT exclusivo no RUNNER_TEMP:
+      # - sem AVM
+      # - sem depender de "asset existe/não existe"
+      # - sem conflito de binário (anchor already exists)
+      - name: Install Anchor CLI (build from source, isolated)
+        shell: bash
+        env:
+          ANCHOR_VERSION: "v0.30.1"
+        run: |
+          set -euxo pipefail
+
+          # Diretórios isolados (não usa ~/.cargo/bin)
+          export CARGO_HOME="$RUNNER_TEMP/cargo-home"
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/cargo-target"
+          export ANCHOR_ROOT="$RUNNER_TEMP/anchor-root"
+
+          mkdir -p "$CARGO_HOME" "$CARGO_TARGET_DIR" "$ANCHOR_ROOT"
+
+          # Instala anchor-cli a partir do tag
+          cargo install \
+            --git https://github.com/coral-xyz/anchor \
+            --tag "$ANCHOR_VERSION" \
+            anchor-cli \
+            --locked \
+            --root "$ANCHOR_ROOT"
+
+          echo "$ANCHOR_ROOT/bin" >> "$GITHUB_PATH"
+          export PATH="$ANCHOR_ROOT/bin:$PATH"
+
+          # Verificações (evita seguir com PATH errado)
+          command -v anchor
+          anchor --version
+
+      - name: Show repo files (debug)
         shell: bash
         run: |
           set -euxo pipefail
-          ANCHOR_VERSION="0.30.1"
-
-          # ✅ Binário direto (sem tar.gz)
-          curl -fL "https://github.com/coral-xyz/anchor/releases/download/v${ANCHOR_VERSION}/anchor-${ANCHOR_VERSION}-x86_64-unknown-linux-gnu" -o anchor
-
-          # ✅ Sanidade: se vier HTML, isso denuncia download errado na hora
-          file anchor
-          head -c 200 anchor | cat
-
-          chmod +x anchor
-          sudo mv anchor /usr/local/bin/anchor
-
-          anchor --version
-          command -v anchor
+          pwd
+          ls -la
+          echo "contracts:"
+          ls -la contracts || true
 
       - name: Install JS deps (root)
         shell: bash
@@ -76,6 +104,7 @@ jobs:
         run: |
           set -euxo pipefail
           find contracts -name Cargo.lock -type f -delete || true
+          find contracts -name Cargo.lock -type f -print || true
 
       - name: Run anchor test
         working-directory: contracts
@@ -84,4 +113,10 @@ jobs:
           set -euxo pipefail
           solana --version
           anchor --version
+          command -v solana
+          command -v anchor
+
+          # (opcional, mas ajuda em CI)
+          solana config set --url localhost
+
           anchor test
