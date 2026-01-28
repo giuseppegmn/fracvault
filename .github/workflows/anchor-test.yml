@@ -29,7 +29,7 @@ jobs:
         with:
           node-version: "20"
 
-      # ✅ FIX: Rust >= 1.82 pra compilar AVM (print mostrou crates exigindo 1.82)
+      # Rust suficiente pra compilar o AVM
       - name: Setup Rust (pinned)
         uses: dtolnay/rust-toolchain@v1
         with:
@@ -64,11 +64,23 @@ jobs:
           cargo install --git https://github.com/coral-xyz/anchor avm --locked
           avm --version
 
-          # Instala e usa Anchor via AVM
+          # ✅ DEFENSIVO: se existir anchor antigo (runner/cache), remove antes do avm install
+          if command -v anchor >/dev/null 2>&1; then
+            echo "Found existing anchor at: $(command -v anchor)"
+          fi
+          rm -f "$HOME/.cargo/bin/anchor" || true
+
+          # (opcional) também remove shims antigos do AVM, se existirem
+          rm -f "$HOME/.local/share/avm/bin/anchor" || true
+          rm -f "$HOME/.avm/bin/anchor" || true
+
           ANCHOR_VERSION="0.30.1"
           avm install "${ANCHOR_VERSION}"
           avm use "${ANCHOR_VERSION}"
+
+          # Garante que o anchor ativo é o do AVM
           anchor --version
+          command -v anchor
 
       - name: Show repo files (debug)
         shell: bash
