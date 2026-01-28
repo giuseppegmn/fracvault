@@ -45,10 +45,8 @@ jobs:
             "https://github.com/solana-labs/solana/releases/download/${SOLANA_VERSION}/solana-release-x86_64-unknown-linux-gnu.tar.bz2" \
             -o solana.tar.bz2
           tar -xjf solana.tar.bz2
-
           echo "$PWD/solana-release/bin" >> "$GITHUB_PATH"
           export PATH="$PWD/solana-release/bin:$PATH"
-
           solana --version
 
       - name: Create Solana keypair for CI
@@ -65,22 +63,18 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-
           export CARGO_HOME="$RUNNER_TEMP/cargo-home"
           export CARGO_TARGET_DIR="$RUNNER_TEMP/cargo-target"
           export ANCHOR_ROOT="$RUNNER_TEMP/anchor-root"
           mkdir -p "$CARGO_HOME" "$CARGO_TARGET_DIR" "$ANCHOR_ROOT"
-
           cargo install \
             --git https://github.com/coral-xyz/anchor \
             --tag v0.31.1 \
             anchor-cli \
             --locked \
             --root "$ANCHOR_ROOT"
-
           echo "$ANCHOR_ROOT/bin" >> "$GITHUB_PATH"
           export PATH="$ANCHOR_ROOT/bin:$PATH"
-
           anchor --version
 
       - name: Install JS deps (root)
@@ -88,6 +82,14 @@ jobs:
         run: |
           set -euxo pipefail
           npm install --no-audit --no-fund
+
+      - name: Debug Anchor.toml
+        working-directory: contracts
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo "==== contracts/Anchor.toml ===="
+          nl -ba Anchor.toml | sed -n '1,120p'
 
       - name: Run anchor tests
         working-directory: contracts
