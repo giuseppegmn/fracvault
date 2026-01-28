@@ -16,63 +16,58 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install system deps
+      - name: Install system dependencies
         shell: bash
         run: |
           set -euxo pipefail
           sudo apt-get update
           sudo apt-get install -y \
-            pkg-config build-essential libssl-dev ca-certificates curl git \
-            python3 make g++ \
-            libudev-dev
+            build-essential pkg-config libssl-dev \
+            libudev-dev ca-certificates curl git \
+            python3 make g++
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      # Rust suficiente pra compilar toolchains modernas (evita MSRV quebrando)
-      - name: Setup Rust (pinned)
+      # 🔒 Rust FIXADO EM 1.79.0 (última versão compatível com time 0.3.29)
+      - name: Setup Rust (exact, compatible)
         uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: "1.82.0"
+          toolchain: "1.79.0"
           components: rustfmt, clippy
 
-      - name: Install Solana CLI (GitHub Releases)
+      - name: Install Solana CLI
         shell: bash
         run: |
           set -euxo pipefail
           SOLANA_VERSION="v1.18.26"
-          curl -fL "https://github.com/solana-labs/solana/releases/download/${SOLANA_VERSION}/solana-release-x86_64-unknown-linux-gnu.tar.bz2" -o solana.tar.bz2
+          curl -fL \
+            "https://github.com/solana-labs/solana/releases/download/${SOLANA_VERSION}/solana-release-x86_64-unknown-linux-gnu.tar.bz2" \
+            -o solana.tar.bz2
           tar -xjf solana.tar.bz2
-
           echo "$PWD/solana-release/bin" >> "$GITHUB_PATH"
           export PATH="$PWD/solana-release/bin:$PATH"
-
           solana --version
 
-      # ✅ Anchor CLI via source (tag), instalado em ROOT exclusivo no RUNNER_TEMP:
-      # - sem AVM
-      # - sem depender de "asset existe/não existe"
-      # - sem conflito de binário (anchor already exists)
-      - name: Install Anchor CLI (build from source, isolated)
+      # 🧠 Anchor buildado do source, mas com Rust compatível
+      - name: Install Anchor CLI (source, compatible & isolated)
         shell: bash
         env:
-          ANCHOR_VERSION: "v0.30.1"
+          ANCHOR_TAG: "v0.30.1"
         run: |
           set -euxo pipefail
 
-          # Diretórios isolados (não usa ~/.cargo/bin)
           export CARGO_HOME="$RUNNER_TEMP/cargo-home"
           export CARGO_TARGET_DIR="$RUNNER_TEMP/cargo-target"
           export ANCHOR_ROOT="$RUNNER_TEMP/anchor-root"
 
           mkdir -p "$CARGO_HOME" "$CARGO_TARGET_DIR" "$ANCHOR_ROOT"
 
-          # Instala anchor-cli a partir do tag
           cargo install \
             --git https://github.com/coral-xyz/anchor \
-            --tag "$ANCHOR_VERSION" \
+            --tag "$ANCHOR_TAG" \
             anchor-cli \
             --locked \
             --root "$ANCHOR_ROOT"
@@ -80,18 +75,8 @@ jobs:
           echo "$ANCHOR_ROOT/bin" >> "$GITHUB_PATH"
           export PATH="$ANCHOR_ROOT/bin:$PATH"
 
-          # Verificações (evita seguir com PATH errado)
-          command -v anchor
           anchor --version
-
-      - name: Show repo files (debug)
-        shell: bash
-        run: |
-          set -euxo pipefail
-          pwd
-          ls -la
-          echo "contracts:"
-          ls -la contracts || true
+          command -v anchor
 
       - name: Install JS deps (root)
         shell: bash
@@ -99,24 +84,17 @@ jobs:
           set -euxo pipefail
           npm install --no-audit --no-fund
 
-      - name: Delete Cargo.lock in contracts (defensive)
+      - name: Remove Cargo.lock from contracts (defensive)
         shell: bash
         run: |
           set -euxo pipefail
           find contracts -name Cargo.lock -type f -delete || true
-          find contracts -name Cargo.lock -type f -print || true
 
-      - name: Run anchor test
+      - name: Run anchor tests
         working-directory: contracts
         shell: bash
         run: |
           set -euxo pipefail
           solana --version
           anchor --version
-          command -v solana
-          command -v anchor
-
-          # (opcional, mas ajuda em CI)
-          solana config set --url localhost
-
           anchor test
